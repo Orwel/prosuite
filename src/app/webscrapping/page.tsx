@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import DashboardLayout from "../components/DashboardLayout";
 import { 
   WebScrapingHeader, 
   StatsCards, 
@@ -381,36 +382,35 @@ export default function WebScrappingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <WebScrapingHeader onAddSite={() => setIsAddModalOpen(true)} />
-      
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          <StatsCards stats={stats} />
+    <DashboardLayout activeSection="webscraping">
+      <div className="space-y-8">
+        <WebScrapingHeader onAddSite={() => setIsAddModalOpen(true)} />
+        
+        <StatsCards stats={stats} />
+        
+        <SystemStatus />
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <WebsiteList 
+            websites={websites}
+            onToggleStatus={handleToggleStatus}
+            onStartScraping={handleStartScraping}
+            onExportData={handleExportData}
+            onSettings={handleSettings}
+            onDelete={handleDeleteSite}
+            onViewResults={handleViewResults}
+            onAnalyze={handleAnalyze}
+            onViewAnalysis={handleViewAnalysis}
+          />
           
-          <SystemStatus />
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <WebsiteList 
-              websites={websites}
-              onToggleStatus={handleToggleStatus}
-              onStartScraping={handleStartScraping}
-              onExportData={handleExportData}
-              onSettings={handleSettings}
-              onDelete={handleDeleteSite}
-              onViewResults={handleViewResults}
-              onAnalyze={handleAnalyze}
-              onViewAnalysis={handleViewAnalysis}
-            />
-            
-            <div className="space-y-8">
-              <RealTimeData data={realTimeData} />
-              <ScrapingLogs logs={logs} />
-            </div>
+          <div className="space-y-8">
+            <RealTimeData data={realTimeData} />
+            <ScrapingLogs logs={logs} />
           </div>
         </div>
-      </main>
+      </div>
 
+      {/* Modales y overlays - estos necesitan estar fuera del layout */}
       <AddSiteModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -434,6 +434,6 @@ export default function WebScrappingPage() {
           </div>
         </div>
       )}
-    </div>
+    </DashboardLayout>
   );
 }
