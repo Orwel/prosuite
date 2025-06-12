@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AlertCircle, CheckCircle, Clock, Server, RefreshCw } from 'lucide-react';
 
 interface SystemStatusProps {
@@ -25,29 +25,25 @@ export default function SystemStatus({ className = '' }: SystemStatusProps) {
     apiStatus: 'checking',
     puppeteerStatus: 'checking',
     activeJobs: 0,
-    lastCheck: 'Nunca'
+    lastCheck: 'Nunca',
+    systemInfo: undefined
   });
   const [isChecking, setIsChecking] = useState(false);
 
-  const checkSystemStatus = async () => {
-    if (isChecking) return; // Evitar múltiples verificaciones simultáneas
+  const checkSystemStatus = useCallback(async () => {
+    if (isChecking) return;
     
     setIsChecking(true);
     console.log('🔍 Verificando estado del sistema...');
     
     try {
-      // Usar AbortController para timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
-
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
       const response = await fetch('/api/scraping/status', {
-        method: 'GET',
-        signal: controller.signal,
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
+        signal: controller.signal
       });
-
+      
       clearTimeout(timeoutId);
 
       if (response.ok) {
@@ -90,7 +86,7 @@ export default function SystemStatus({ className = '' }: SystemStatusProps) {
     } finally {
       setIsChecking(false);
     }
-  };
+  }, [isChecking]);
 
   useEffect(() => {
     // Verificación inicial
@@ -100,7 +96,7 @@ export default function SystemStatus({ className = '' }: SystemStatusProps) {
     const interval = setInterval(checkSystemStatus, 60000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [checkSystemStatus]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {

@@ -22,7 +22,7 @@ interface AnalysisResult {
   content: {
     text: string;
     html: string;
-    structure: any;
+    structure: Record<string, unknown>;
   };
   keywords: {
     found: string[];
@@ -141,8 +141,8 @@ async function performRealAnalysis(
   console.log('🔧 Iniciando análisis real con Puppeteer...');
   
   let puppeteer;
-  let browser: any = null;
-  let page: any = null;
+  let browser: import('puppeteer').Browser | null = null;
+  let page: import('puppeteer').Page | null = null;
 
   try {
     // Importar Puppeteer dinámicamente
@@ -207,7 +207,7 @@ async function performRealAnalysis(
     // Interceptar requests para análisis de performance (simplificado)
     const requests: string[] = [];
     await page.setRequestInterception(true);
-    page.on('request', (request: any) => {
+    page.on('request', (request: import('puppeteer').HTTPRequest) => {
       requests.push(request.url());
       // Bloquear recursos pesados para acelerar
       const resourceType = request.resourceType();
@@ -219,7 +219,7 @@ async function performRealAnalysis(
     });
 
     // Manejar errores de página
-    page.on('error', (error: any) => {
+    page.on('error', (error: Error) => {
       console.warn('⚠️ Error en página:', error);
     });
 
@@ -245,8 +245,13 @@ async function performRealAnalysis(
       }
     }
 
-    console.log('⏳ Esperando estabilización...');
-    await page.waitForTimeout(2000);
+    // Esperar a que la página cargue completamente
+    try {
+      await page.waitForSelector('body', { timeout: 10000 });
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Espera adicional
+    } catch (error) {
+      console.warn('⚠️ Error esperando carga de página:', error);
+    }
 
     const loadTime = Date.now() - startTime;
     console.log(`⚡ Tiempo de carga: ${loadTime}ms`);
@@ -294,16 +299,16 @@ async function performRealAnalysis(
     };
 
     // Función para ejecutar evaluaciones de manera segura
-    const safeEvaluate = async (fn: Function, timeout = 5000, ...args: any[]) => {
+    const safeEvaluate = async <T>(fn: () => T, timeout = 5000): Promise<T> => {
       try {
         return await Promise.race([
-          page.evaluate(fn, ...args),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout en evaluación')), timeout)
+          page!.evaluate(fn),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), timeout)
           )
         ]);
       } catch (error) {
-        console.warn('⚠️ Error en evaluación segura:', error);
+        console.warn('⚠️ Error en evaluación:', error);
         throw error;
       }
     };
@@ -315,50 +320,61 @@ async function performRealAnalysis(
         return {
           title: document.title || '',
           description: document.querySelector('meta[name="description"]')?.getAttribute('content') || '',
-          favicon: document.querySelector('link[rel="icon"], link[rel="shortcut icon"]')?.getAttribute('href') || '',
+          favicon: document.querySelector('link[rel="icon"]')?.getAttribute('href') || 
+                   document.querySelector('link[rel="shortcut icon"]')?.getAttribute('href') || '',
           language: document.documentElement.lang || document.querySelector('html')?.getAttribute('lang') || 'unknown'
         };
       });
     } catch (error) {
       console.warn('⚠️ Error extrayendo información básica:', error);
-      result.errors.push('Error extrayendo información básica');
+      result.basicInfo = {
+        title: '',
+        description: '',
+        favicon: '',
+        language: 'unknown'
+      };
     }
 
     // Extraer contenido principal
     if (options.extractHTML) {
       console.log('📝 Extrayendo contenido...');
       try {
-        result.content = await safeEvaluate((sel: string) => {
-          const element = document.querySelector(sel);
-          if (element) {
+        result.content = await safeEvaluate(() => {
+          const element = document.querySelector(selector);
+          if (!element) {
             return {
-              text: element.textContent?.trim() || '',
-              html: element.innerHTML || '',
-              structure: {
-                tagName: element.tagName.toLowerCase(),
-                className: element.className || '',
-                id: element.id || '',
-                attributes: {}
-              }
+              text: '',
+              html: '',
+              structure: { tagName: 'not-found' }
             };
           }
+
           return {
-            text: document.body.textContent?.trim() || '',
-            html: document.body.innerHTML || '',
-            structure: { tagName: 'body' }
+            text: element.textContent || '',
+            html: element.outerHTML,
+            structure: {
+              tagName: element.tagName.toLowerCase(),
+              className: element.className || undefined,
+              id: element.id || undefined,
+              attributes: {}
+            }
           };
-        }, 3000, selector);
+        });
       } catch (error) {
         console.warn('⚠️ Error extrayendo contenido:', error);
-        result.errors.push('Error extrayendo contenido');
+        result.content = {
+          text: '',
+          html: '',
+          structure: { tagName: 'error' }
+        };
       }
     }
 
     // Buscar palabras clave
     if (keywords.length > 0) {
-      console.log('🔍 Buscando palabras clave...');
+      console.log('🔍 Analizando palabras clave...');
       try {
-        result.keywords = await safeEvaluate((keywords: string[]) => {
+        result.keywords = await safeEvaluate(() => {
           const found: string[] = [];
           const positions: Array<{
             keyword: string;
@@ -368,74 +384,56 @@ async function performRealAnalysis(
             position: number;
           }> = [];
 
-          const bodyText = document.body.textContent?.toLowerCase() || '';
-          
           keywords.forEach(keyword => {
-            const keywordLower = keyword.toLowerCase();
-            if (bodyText.includes(keywordLower)) {
-              found.push(keyword);
-              
-              // Buscar en elementos específicos (simplificado)
-              const elements = document.querySelectorAll('p, div, span, h1, h2, h3');
-              for (let i = 0; i < Math.min(elements.length, 20); i++) {
-                const element = elements[i];
-                const text = element.textContent?.toLowerCase() || '';
-                if (text.includes(keywordLower)) {
-                  positions.push({
-                    keyword,
-                    element: element.tagName.toLowerCase(),
-                    text: element.textContent?.substring(0, 100) || '',
-                    selector: element.tagName.toLowerCase(),
-                    position: text.indexOf(keywordLower)
-                  });
-                  break;
-                }
+            const elements = document.querySelectorAll('*');
+            elements.forEach((element, index) => {
+              const text = element.textContent || '';
+              if (text.toLowerCase().includes(keyword.toLowerCase())) {
+                found.push(keyword);
+                positions.push({
+                  keyword,
+                  element: element.tagName.toLowerCase(),
+                  text: text.substring(0, 100),
+                  selector: generateSelector(element),
+                  position: index
+                });
               }
-            }
+            });
           });
 
           return { found: [...new Set(found)], positions };
-        }, 3000, keywords);
+        });
       } catch (error) {
-        console.warn('⚠️ Error buscando palabras clave:', error);
-        result.errors.push('Error buscando palabras clave');
+        console.warn('⚠️ Error analizando palabras clave:', error);
+        result.keywords = { found: [], positions: [] };
       }
     }
 
     // Extraer assets básicos
     if (options.extractImages || options.extractLinks) {
-      console.log('🖼️ Extrayendo recursos...');
+      console.log('🖼️ Extrayendo assets...');
       try {
-        result.assets = await safeEvaluate((extractImages: boolean, extractLinks: boolean) => {
-          const result: any = { images: [], links: [], scripts: [], stylesheets: [] };
-          
-          if (extractImages) {
-            const images = document.querySelectorAll('img');
-            result.images = Array.from(images).slice(0, 10).map(img => ({
-              src: img.src || '',
-              alt: img.alt || '',
-              title: img.title || ''
-            }));
-          }
+        result.assets = await safeEvaluate(() => {
+          const images = Array.from(document.querySelectorAll('img')).map(img => ({
+            src: (img as HTMLImageElement).src || '',
+            alt: (img as HTMLImageElement).alt || '',
+            title: (img as HTMLImageElement).title || ''
+          }));
 
-          if (extractLinks) {
-            const links = document.querySelectorAll('a[href]');
-            result.links = Array.from(links).slice(0, 15).map(link => {
-              const anchor = link as HTMLAnchorElement;
-              return {
-                href: anchor.href || '',
-                text: anchor.textContent?.trim() || '',
-                type: anchor.href.startsWith('mailto:') ? 'email' : 
-                      anchor.href.startsWith('tel:') ? 'phone' : 'url'
-              };
-            });
-          }
+          const links = Array.from(document.querySelectorAll('a')).map(link => ({
+            href: (link as HTMLAnchorElement).href || '',
+            text: link.textContent || '',
+            type: link.getAttribute('rel') || 'external'
+          }));
 
-          return result;
-        }, 3000, options.extractImages, options.extractLinks);
+          const scripts = Array.from(document.querySelectorAll('script[src]')).map(script => (script as HTMLScriptElement).src);
+          const stylesheets = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map(link => (link as HTMLLinkElement).href);
+
+          return { images, links, scripts, stylesheets };
+        });
       } catch (error) {
-        console.warn('⚠️ Error extrayendo recursos:', error);
-        result.errors.push('Error extrayendo recursos');
+        console.warn('⚠️ Error extrayendo assets:', error);
+        result.assets = { images: [], links: [], scripts: [], stylesheets: [] };
       }
     }
 
@@ -448,9 +446,9 @@ async function performRealAnalysis(
 
         try {
           // Detectar frameworks básicos
-          if ((window as any).React) frameworks.push('React');
-          if ((window as any).Vue) frameworks.push('Vue.js');
-          if ((window as any).jQuery || (window as any).$) frameworks.push('jQuery');
+          if ((window as unknown as Record<string, unknown>).React) frameworks.push('React');
+          if ((window as unknown as Record<string, unknown>).Vue) frameworks.push('Vue.js');
+          if ((window as unknown as Record<string, unknown>).jQuery || (window as unknown as Record<string, unknown>).$) frameworks.push('jQuery');
           if (document.querySelector('[data-reactroot]')) frameworks.push('React');
           if (document.querySelector('script[src*="react"]')) frameworks.push('React');
           if (document.querySelector('script[src*="vue"]')) frameworks.push('Vue.js');
@@ -472,7 +470,7 @@ async function performRealAnalysis(
             requests: 0
           }
         };
-      }, 3000);
+      });
 
       result.technical = {
         ...technicalData,
@@ -493,22 +491,22 @@ async function performRealAnalysis(
     console.log('🔍 Analizando SEO...');
     try {
       result.seo = await safeEvaluate(() => {
-        const metaTags = Array.from(document.querySelectorAll('meta')).slice(0, 10).map(meta => ({
-          name: meta.name || meta.getAttribute('property') || 'unknown',
-          content: meta.content || ''
-        })).filter(tag => tag.content);
+        const metaTags = Array.from(document.querySelectorAll('meta')).map(meta => ({
+          name: meta.getAttribute('name') || meta.getAttribute('property') || '',
+          content: meta.getAttribute('content') || ''
+        }));
 
-        const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).slice(0, 10).map(heading => ({
+        const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(heading => ({
           level: parseInt(heading.tagName.charAt(1)),
-          text: heading.textContent?.trim() || ''
-        })).filter(h => h.text);
+          text: heading.textContent || ''
+        }));
 
-        const altTexts = Array.from(document.querySelectorAll('img[alt]')).slice(0, 10)
-          .map(img => img.getAttribute('alt'))
-          .filter(alt => alt && alt.trim());
+        const altTexts = Array.from(document.querySelectorAll('img')).map(img => 
+          (img as HTMLImageElement).alt || ''
+        ).filter(alt => alt !== '');
 
         return { metaTags, headings, altTexts };
-      }, 3000);
+      });
     } catch (error) {
       console.warn('⚠️ Error analizando SEO:', error);
       result.errors.push('Error analizando SEO');
@@ -822,4 +820,11 @@ async function performSimulatedAnalysis(
 
   console.log('🎭 Análisis simulado completado');
   return result;
-} 
+}
+
+// Función para generar selectores CSS
+const generateSelector = (element: Element): string => {
+  if (element.id) return `#${element.id}`;
+  if (element.className) return `.${element.className.split(' ')[0]}`;
+  return element.tagName.toLowerCase();
+}; 

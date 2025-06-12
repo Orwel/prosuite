@@ -13,7 +13,7 @@ interface AnalysisResult {
   content: {
     text: string;
     html: string;
-    structure: any;
+    structure: Record<string, unknown>;
   };
   keywords: {
     found: string[];
@@ -356,7 +356,7 @@ export default function AnalysisResults({ isOpen, onClose, result, mode }: Analy
                           </code>
                         </div>
                         <p className="text-sm text-gray-700 dark:text-gray-300">
-                          "{position.text}"
+                          &quot;{position.text}&quot;
                         </p>
                       </div>
                     ))}

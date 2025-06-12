@@ -1,9 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface Website {
+  id: string;
+  url: string;
+  selector: string;
+  interval: number;
+  name: string;
+}
+
+interface ScrapingJob {
+  websiteId: string;
+  status: string;
+  startTime: Date;
+  interval: NodeJS.Timeout | null;
+  mode: string;
+}
+
+interface ScrapingDataItem {
+  id: string;
+  websiteId: string;
+  websiteName: string;
+  url: string;
+  selector?: string;
+  timestamp: string;
+  status: string;
+  error?: string;
+  dataCount: number;
+  mode: string;
+}
+
 // Simulamos una base de datos en memoria (en producción usarías una BD real)
-let websites: any[] = [];
-let scrapingData: any[] = [];
-let scrapingJobs: Map<string, any> = new Map();
+const websites: Website[] = [];
+let scrapingData: ScrapingDataItem[] = [];
+const scrapingJobs: Map<string, ScrapingJob> = new Map();
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,12 +86,12 @@ export async function POST(request: NextRequest) {
 }
 
 // Función para scraping simulado (para desarrollo)
-async function startSimulatedScraping(website: any) {
-  const scrapingJob = {
+async function startSimulatedScraping(website: Website) {
+  const scrapingJob: ScrapingJob = {
     websiteId: website.id,
     status: 'running',
     startTime: new Date(),
-    interval: null as any,
+    interval: null,
     mode: 'simulated'
   };
 
@@ -113,11 +142,12 @@ async function startSimulatedScraping(website: any) {
     } catch (error) {
       console.error(`Error en scraping simulado de ${website.name}:`, error);
       
-      const errorData = {
+      const errorData: ScrapingDataItem = {
         id: Date.now().toString(),
         websiteId: website.id,
         websiteName: website.name,
         url: website.url,
+        selector: website.selector,
         timestamp: new Date().toISOString(),
         status: 'error',
         error: error instanceof Error ? error.message : 'Error desconocido',
@@ -146,16 +176,16 @@ async function startSimulatedScraping(website: any) {
 }
 
 // Función para scraping real con Puppeteer
-async function startRealScraping(website: any) {
+async function startRealScraping(website: Website) {
   // Importar Puppeteer dinámicamente
   const puppeteer = await import('puppeteer');
-  let browser: any = null;
+  let browser: import('puppeteer').Browser | null = null;
   
-  const scrapingJob = {
+  const scrapingJob: ScrapingJob = {
     websiteId: website.id,
     status: 'running',
     startTime: new Date(),
-    interval: null as any,
+    interval: null,
     mode: 'real'
   };
 
@@ -177,9 +207,9 @@ async function startRealScraping(website: any) {
     });
 
     const scrapePage = async () => {
-      let page: any = null;
+      let page: import('puppeteer').Page | null = null;
       try {
-        page = await browser.newPage();
+        page = await browser!.newPage();
         
         // Configurar headers para parecer un navegador real
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
@@ -196,14 +226,20 @@ async function startRealScraping(website: any) {
         // Extraer datos usando el selector
         const data = await page.evaluate((selector: string) => {
           const elements = document.querySelectorAll(selector);
-          const results: any[] = [];
+          const results: Array<{
+            index: number;
+            text: string;
+            html: string;
+            attributes: Record<string, string>;
+            tagName: string;
+          }> = [];
           
           elements.forEach((element, index) => {
             results.push({
               index: index,
               text: element.textContent?.trim() || '',
               html: element.innerHTML,
-              attributes: Array.from(element.attributes).reduce((acc: any, attr) => {
+              attributes: Array.from(element.attributes).reduce((acc: Record<string, string>, attr) => {
                 acc[attr.name] = attr.value;
                 return acc;
               }, {}),
@@ -243,11 +279,12 @@ async function startRealScraping(website: any) {
         console.error(`Error en scraping real de ${website.name}:`, error);
         
         // Registrar error
-        const errorData = {
+        const errorData: ScrapingDataItem = {
           id: Date.now().toString(),
           websiteId: website.id,
           websiteName: website.name,
           url: website.url,
+          selector: website.selector,
           timestamp: new Date().toISOString(),
           status: 'error',
           error: error instanceof Error ? error.message : 'Error desconocido',

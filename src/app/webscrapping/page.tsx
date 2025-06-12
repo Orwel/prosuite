@@ -26,7 +26,7 @@ interface AnalysisResult {
   content: {
     text: string;
     html: string;
-    structure: any;
+    structure: Record<string, unknown>;
   };
   keywords: {
     found: string[];
@@ -63,8 +63,27 @@ interface AnalysisResult {
 
 export default function WebScrappingPage() {
   const [websites, setWebsites] = useState<Website[]>([]);
-  const [realTimeData, setRealTimeData] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [realTimeData, setRealTimeData] = useState<Array<{
+    id: string;
+    websiteId: string;
+    siteId: string;
+    siteName: string;
+    data: string;
+    timestamp: string;
+    status: string;
+    type: string;
+  }>>([]);
+  const [logs, setLogs] = useState<Array<{
+    id: string;
+    websiteId: string;
+    timestamp: string;
+    site: string;
+    action: string;
+    status: 'error' | 'success';
+    details: string;
+    dataCount: number;
+    message: string;
+  }>>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [currentAnalysis, setCurrentAnalysis] = useState<{
@@ -89,11 +108,13 @@ export default function WebScrappingPage() {
         const randomSite = activeSites[Math.floor(Math.random() * activeSites.length)];
         const newData = {
           id: Date.now().toString(),
+          websiteId: randomSite.id,
           siteId: randomSite.id,
           siteName: randomSite.name,
           data: `Datos extraídos: ${Math.random().toFixed(2)}`,
           timestamp: new Date().toLocaleTimeString(),
-          status: Math.random() > 0.1 ? 'success' : 'error'
+          status: Math.random() > 0.1 ? 'success' : 'error',
+          type: 'scraping'
         };
         
         setRealTimeData(prev => [newData, ...prev.slice(0, 49)]);
@@ -101,11 +122,14 @@ export default function WebScrappingPage() {
         // Agregar log
         const logEntry = {
           id: Date.now().toString(),
+          websiteId: randomSite.id,
           timestamp: new Date().toLocaleTimeString(),
           site: randomSite.name,
           action: 'Scraping realizado',
-          status: newData.status,
-          details: newData.data
+          status: (newData.status as 'error' | 'success'),
+          details: newData.data,
+          dataCount: 1,
+          message: newData.data
         };
         setLogs(prev => [logEntry, ...prev.slice(0, 99)]);
       }
@@ -114,7 +138,22 @@ export default function WebScrappingPage() {
     return () => clearInterval(interval);
   }, [websites]);
 
-  const handleAddSite = async (siteData: any) => {
+  const handleAddSite = async (siteData: {
+    name: string;
+    url: string;
+    selector: string;
+    interval: number;
+    keywords?: string[];
+    analysisOptions?: {
+      extractCSS: boolean;
+      extractHTML: boolean;
+      extractJS: boolean;
+      extractImages: boolean;
+      extractLinks: boolean;
+      extractMetadata: boolean;
+      deepScan: boolean;
+    };
+  }) => {
     const newWebsite: Website = {
       id: Date.now().toString(),
       name: siteData.name,
@@ -133,11 +172,14 @@ export default function WebScrappingPage() {
     // Log de creación
     const logEntry = {
       id: Date.now().toString(),
+      websiteId: newWebsite.id,
       timestamp: new Date().toLocaleTimeString(),
       site: siteData.name,
       action: 'Sitio agregado',
-      status: 'success',
-      details: `URL: ${siteData.url}, Selector: ${siteData.selector}`
+      status: 'success' as const,
+      details: `URL: ${siteData.url}, Selector: ${siteData.selector}`,
+      dataCount: 0,
+      message: `Sitio ${siteData.name} agregado`
     };
     setLogs(prev => [logEntry, ...prev]);
 
@@ -186,11 +228,14 @@ export default function WebScrappingPage() {
         
         const logEntry = {
           id: Date.now().toString(),
+          websiteId: id,
           timestamp: new Date().toLocaleTimeString(),
           site: website.name,
           action: 'Scraping iniciado',
-          status: 'success',
-          details: `Modo: ${result.mode}`
+          status: 'success' as const,
+          details: `Modo: ${result.mode}`,
+          dataCount: 0,
+          message: `Scraping iniciado en ${website.name}`
         };
         setLogs(prev => [logEntry, ...prev]);
       } else {
@@ -205,11 +250,14 @@ export default function WebScrappingPage() {
       
       const logEntry = {
         id: Date.now().toString(),
+        websiteId: id,
         timestamp: new Date().toLocaleTimeString(),
         site: website.name,
         action: 'Error en scraping',
-        status: 'error',
-        details: error instanceof Error ? error.message : 'Error desconocido'
+        status: 'error' as const,
+        details: error instanceof Error ? error.message : 'Error desconocido',
+        dataCount: 0,
+        message: error instanceof Error ? error.message : 'Error desconocido'
       };
       setLogs(prev => [logEntry, ...prev]);
     }
@@ -226,11 +274,14 @@ export default function WebScrappingPage() {
     
     const logEntry = {
       id: Date.now().toString(),
+      websiteId: id,
       timestamp: new Date().toLocaleTimeString(),
       site: website.name,
       action: 'Sitio eliminado',
-      status: 'success',
-      details: `Sitio ${website.name} eliminado permanentemente`
+      status: 'success' as const,
+      details: `Sitio ${website.name} eliminado permanentemente`,
+      dataCount: 0,
+      message: `Sitio ${website.name} eliminado permanentemente`
     };
     setLogs(prev => [logEntry, ...prev]);
   };
@@ -251,7 +302,22 @@ export default function WebScrappingPage() {
     alert(`Datos encontrados: ${siteData.length} registros. Ver consola para detalles.`);
   };
 
-  const performAnalysis = async (id: string, siteData?: any) => {
+  const performAnalysis = async (id: string, siteData?: {
+    name: string;
+    url: string;
+    selector: string;
+    interval: number;
+    keywords?: string[];
+    analysisOptions?: {
+      extractCSS: boolean;
+      extractHTML: boolean;
+      extractJS: boolean;
+      extractImages: boolean;
+      extractLinks: boolean;
+      extractMetadata: boolean;
+      deepScan: boolean;
+    };
+  }) => {
     const website = websites.find(w => w.id === id) || siteData;
     if (!website) return;
 
@@ -288,11 +354,14 @@ export default function WebScrappingPage() {
         
         const logEntry = {
           id: Date.now().toString(),
+          websiteId: id,
           timestamp: new Date().toLocaleTimeString(),
           site: website.name,
           action: 'Análisis completado',
-          status: 'success',
-          details: `Modo: ${result.mode}, Palabras clave encontradas: ${result.data.keywords.found.length}`
+          status: 'success' as const,
+          details: `Modo: ${result.mode}, Palabras clave encontradas: ${result.data.keywords.found.length}`,
+          dataCount: 0,
+          message: `Análisis completado en ${website.name}`
         };
         setLogs(prev => [logEntry, ...prev]);
       } else {
@@ -303,11 +372,14 @@ export default function WebScrappingPage() {
       
       const logEntry = {
         id: Date.now().toString(),
+        websiteId: id,
         timestamp: new Date().toLocaleTimeString(),
         site: website.name,
         action: 'Error en análisis',
-        status: 'error',
-        details: error instanceof Error ? error.message : 'Error desconocido'
+        status: 'error' as const,
+        details: error instanceof Error ? error.message : 'Error desconocido',
+        dataCount: 0,
+        message: error instanceof Error ? error.message : 'Error desconocido'
       };
       setLogs(prev => [logEntry, ...prev]);
       
@@ -367,16 +439,19 @@ export default function WebScrappingPage() {
 
     const logEntry = {
       id: Date.now().toString(),
+      websiteId: id,
       timestamp: new Date().toLocaleTimeString(),
       site: website.name,
       action: 'Datos exportados',
-      status: 'success',
-      details: `${siteData.length} registros exportados`
+      status: 'success' as const,
+      details: `${siteData.length} registros exportados`,
+      dataCount: siteData.length,
+      message: `${siteData.length} registros exportados`
     };
     setLogs(prev => [logEntry, ...prev]);
   };
 
-  const handleSettings = (id: string) => {
+  const handleSettings = () => {
     // Aquí podrías abrir un modal de configuración
     alert('Funcionalidad de configuración en desarrollo');
   };

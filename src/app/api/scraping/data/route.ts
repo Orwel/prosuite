@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface ScrapingDataItem {
+  id: string;
+  websiteId: string;
+  websiteName: string;
+  url: string;
+  selector: string;
+  timestamp: string;
+  data: Array<{
+    index: number;
+    text: string;
+    html: string;
+    tagName: string;
+  }>;
+  dataCount: number;
+  status: string;
+}
+
 // Simulamos datos en memoria (en producción vendrían de una BD)
-let scrapingData: any[] = [
+let scrapingData: ScrapingDataItem[] = [
   {
     id: '1',
     websiteId: '1',

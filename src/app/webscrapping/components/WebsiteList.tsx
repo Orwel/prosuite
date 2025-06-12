@@ -9,7 +9,12 @@ export interface Website {
   isActive: boolean;
   lastScrape: string;
   status: 'running' | 'paused' | 'error' | 'idle';
-  data?: any[];
+  data?: Array<{
+    index: number;
+    text: string;
+    html: string;
+    tagName: string;
+  }>;
   keywords?: string[];
   analysisOptions?: {
     extractCSS: boolean;
@@ -64,7 +69,7 @@ export default function WebsiteList({
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`¿Estás seguro de que quieres eliminar "${name}"? Esta acción no se puede deshacer.`)) {
+    if (window.confirm('¿Estás seguro de que quieres eliminar "' + name + '"? Esta acción no se puede deshacer.')) {
       onDelete(id);
     }
   };
@@ -248,7 +253,7 @@ export default function WebsiteList({
                 Comienza agregando tu primer sitio web para análisis y scraping.
               </p>
               <p className="text-sm text-gray-400">
-                Haz clic en "Agregar Sitio" para comenzar con el análisis profundo.
+                Haz clic en &quot;Agregar Sitio&quot; para comenzar con el análisis profundo.
               </p>
             </div>
           )}
